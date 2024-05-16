@@ -306,9 +306,19 @@ class PyBird:
 
                 # Save the summary+detail info in our result
                 route_detail.update(route_summary)
+                if last_route and not route_detail.get('prefix'):
+                    route_detail['prefix'] = last_route['prefix']
+
                 # Do not use this summary again on the next run
+                last_route = route_summary
                 route_summary = None
                 routes.append(route_detail)
+            elif route_summary:
+                if last_route and not route_summary.get('prefix'):
+                    route_summary['prefix'] = last_route['prefix']
+                last_route = route_summary
+                routes.append(route_summary)
+                route_summary = None
 
             if field_number == 8001:
                 # network not in table
