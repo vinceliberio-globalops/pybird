@@ -267,12 +267,13 @@ class PyBird:
 
         route_summary = None
 
-        self.log.debug("PyBird: parse route data: lines=%d", len(lines))
+        #print("PyBird: parse route data: lines={}".format(len(lines)))
         line_counter = -1
+        last_route = None
         while line_counter < len(lines) - 1:
             line_counter += 1
             line = lines[line_counter].strip()
-            self.log.debug("PyBird: parse route data: %s", line)
+            #print("PyBird: parse route data: {}".format(line))
             (field_number, line) = self._extract_field_number(line)
 
             if field_number in self.ignored_field_numbers:
@@ -300,7 +301,7 @@ class PyBird:
                     route_detail_raw.append(line)
                     line_counter += 1
                     line = lines[line_counter]
-                    self.log.debug("PyBird: parse route data: %s", line)
+                    #print("PyBird: parse route data: {}".format(line))
                 # this loop will have walked a bit too far, correct it
                 line_counter -= 1
 
@@ -308,9 +309,19 @@ class PyBird:
 
                 # Save the summary+detail info in our result
                 route_detail.update(route_summary)
+                if last_route and not route_detail.get('prefix'):
+                    route_detail['prefix'] = last_route['prefix']
+
                 # Do not use this summary again on the next run
+                last_route = route_summary
                 route_summary = None
                 routes.append(route_detail)
+            elif route_summary:
+                if last_route and not route_summary.get('prefix'):
+                    route_summary['prefix'] = last_route['prefix']
+                last_route = route_summary
+                routes.append(route_summary)
+                route_summary = None
 
             if field_number == 8001:
                 # network not in table
