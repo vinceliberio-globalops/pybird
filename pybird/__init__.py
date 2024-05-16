@@ -330,7 +330,9 @@ class PyBird:
         return re.compile(
             r"(?P<prefix>[a-f0-9\.:\/]+)?\s+"
             r"(?:via\s+(?P<peer>[^\s]+) on (?P<interface>[^\s]+)|(?:\w+)?)?\s*"
-            r"\[(?P<source>[^\s]+) (?P<time>[^\]\s]+)(?: from (?P<peer2>[^\s]+))?\]"
+            r"\[(?P<source>[^\s]+) "
+            r"(?P<time>(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}))"
+            r"(?: from (?P<peer2>[^\s]+))?\]"
         )
 
     def _parse_route_summary(self, line):

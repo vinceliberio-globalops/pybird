@@ -18,6 +18,16 @@ In it's current state, you can use it to query the status of specific or all
 BGP peers, to query the routes received, accepted and rejected from a peer,
 or the general status of BIRD (router ID, last config change)
 
+Ensure the timestamp formats in your bird.conf are set to `iso long`:
+```
+#### GLOBAL SETTINGS ####
+## TIMESTAMP FORMATS ##
+timeformat base         iso long;
+timeformat log          iso long;
+timeformat protocol     iso long;
+timeformat route        iso long;
+```
+
 
 # License
 
