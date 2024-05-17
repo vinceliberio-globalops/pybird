@@ -9,10 +9,12 @@ from typing import Any, Optional
 # Define the route summary regex
 RE_ROUTE_SUMMARY = re.compile(
             r" ?(?P<prefix>[a-f0-9\.:\/]+)?\s+"
-            r"(?:via\s+(?P<peer>[^\s]+) on (?P<interface>[^\s]+)|(?:\w+)?)?\s*"
+            r"(?:via\s+(?P<peer>[^\s]+) on (?P<interface>[^\s]+)|(?P<type>\w+)?)?\s*"
             r"\[(?P<source>[^\s]+) "
             r"(?P<time>(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}))"
             r"(?: from (?P<peer2>[^\s]+))?\]"
+            r"(( (?P<status_symbol>[^\s]) )| )?"
+            r"(\((?P<preference>\d{1,5})\))?"
         )
 # And the additional lines of the summary
 RE_ROUTE_ADDITIONAL_SUMMARY_INTERFACE = re.compile(r" ?\t(dev (?P<interface>[^\s\/]{1,16}))")
@@ -446,6 +448,10 @@ class PyBird:
             if key == "community":
                 # convert (8954,220) (8954,620) to 8954:220 8954:620
                 value = value.replace(",", ":").replace("(", "").replace(")", "")
+
+            if key == "large_community":
+                # convert (4208675309, 0, 39) to 4208675309:0:39
+                value = value.replace(", ", ":").replace("(", "").replace(")", "")
 
             attributes[key] = value
 
