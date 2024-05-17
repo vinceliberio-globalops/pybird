@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pybird"
-version = "2024.05.16.0"
+version = "2024.05.17.0"
 description = "BIRD interface handler for Python"
 readme = "README.md"
 repository = "https://github.com/20c/pybird"
