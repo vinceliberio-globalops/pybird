@@ -4,6 +4,20 @@ import socket
 from datetime import datetime, timedelta
 from subprocess import PIPE, Popen
 from more_itertools import peekable
+from typing import Any, Optional
+
+# Define the route summary regex
+RE_ROUTE_SUMMARY = re.compile(
+            r" ?(?P<prefix>[a-f0-9\.:\/]+)?\s+"
+            r"(?:via\s+(?P<peer>[^\s]+) on (?P<interface>[^\s]+)|(?:\w+)?)?\s*"
+            r"\[(?P<source>[^\s]+) "
+            r"(?P<time>(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}))"
+            r"(?: from (?P<peer2>[^\s]+))?\]"
+        )
+# And the additional lines of the summary
+RE_ROUTE_ADDITIONAL_SUMMARY_INTERFACE = re.compile(r" ?\t(dev (?P<interface>[^\s\/]{1,16}))")
+RE_ROUTE_ADDITIONAL_SUMMARY_IP = re.compile(r" ?\t(via (?P<gateway>[a-f0-9\.:]+)( on (?P<interface>[^\s\/]{1,16}))?)")
+
 
 
 class PyBird:
@@ -250,7 +264,26 @@ class PyBird:
             return data
         return self._parse_route_data(data)
 
-    def _parse_route_data(self, data):
+    def _parse_route_summary_datablock(self, datablock: list[str]) -> dict[str, Any]:
+        # Generally, the info is on the last or second-to-last line in the datablock.
+        # Also, if desired, here is the place to to extract the tablename.
+
+        # Iterate through the sizes
+        for size in range(1, len(datablock) + 1):
+            # We're going in reverse, so make the index negative
+            index = size * -1
+
+            # Get the potential summary
+            lines = datablock[index:]
+            try:
+                return self._parse_route_summary(lines)
+            except ValueError:
+                pass
+        
+        raise ValueError(f"Invalid Route Summary! {datablock}")
+        
+
+    def _parse_route_data(self, data: str):
         """Parse a blob like:
         0001 BIRD 1.3.3 ready.
         1007-2a02:898::/32      via 2001:7f8:1::a500:8954:1 on eth1 [PS2 12:46] * (100) [AS8283i]
@@ -270,6 +303,7 @@ class PyBird:
         route_summary = None
 
         self.log.debug("PyBird: parse route data: lines=%d", len(splitted))
+        last_route = None
         for line in lines:
             self.log.debug("PyBird: parse route data: %s", line)
 
@@ -282,18 +316,16 @@ class PyBird:
                 continue
 
             # Collect all data lines
-            datablock = [ line.strip() ]
+            datablock = [ line ]
             while lines.peek("default").startswith(" "):
                 self.log.debug("PyBird: Collecting field %s data line: %s", (field_number, lines.peek()))
-                datablock.append(next(lines).strip())
+                datablock.append(next(lines))
 
             if field_number in self.ignored_field_numbers:
                 continue
 
             if field_number == 1007:
-                # As far as foreseen, the info is always on the last line in the datablock.
-                # Allso, if desired, here is the place to to extract the tablename.
-                route_summary = self._parse_route_summary(datablock[-1])
+                route_summary = self._parse_route_summary_datablock(datablock)
 
             route_detail = None
 
@@ -318,7 +350,6 @@ class PyBird:
                     route_summary['prefix'] = last_route['prefix']
                 last_route = route_summary
                 routes.append(route_summary)
-                route_summary = None
 
             if field_number == 8001:
                 # network not in table
@@ -326,20 +357,14 @@ class PyBird:
 
         return routes
 
-    def _re_route_summary(self):
-        return re.compile(
-            r"(?P<prefix>[a-f0-9\.:\/]+)?\s+"
-            r"(?:via\s+(?P<peer>[^\s]+) on (?P<interface>[^\s]+)|(?:\w+)?)?\s*"
-            r"\[(?P<source>[^\s]+) "
-            r"(?P<time>(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}))"
-            r"(?: from (?P<peer2>[^\s]+))?\]"
-        )
-
-    def _parse_route_summary(self, line):
+    def _parse_route_summary(self, lines: list[str]):
         """Parse a line like:
         2a02:898::/32      via 2001:7f8:1::a500:8954:1 on eth1 [PS2 12:46] * (100) [AS8283i]
         """
-        match = self._re_route_summary().match(line)
+        # Use first line
+        line = lines[0]
+
+        match = RE_ROUTE_SUMMARY.match(line)
         if not match:
             raise ValueError(f"couldn't parse line '{line}'")
         # Note that split acts on sections of whitespace - not just single
@@ -351,7 +376,49 @@ class PyBird:
             route["peer"] = route.pop("peer2")
         else:
             del route["peer2"]
+
+        # Check remaining lines for interface/peer details
+        remaining_lines = lines[1:]
+        gateway, interface = self._parse_route_additional_summary(remaining_lines)
+
+        # Store the gateway
+        route["gateway"] = gateway
+        # Store the interface (if not null)
+        if interface:
+            route["interface"] = interface
+
         return route
+    
+    def _parse_route_additional_summary(self, lines: list[str]) -> tuple[Optional[str], Optional[str]]:
+        """
+        Parses the additional lines of the summary returning like:
+         	via 10.59.1.11 on ens4
+        
+        Returns a tuple of the Gateway (if present) and the Interface (if present)
+        """
+        # Initialize the returns
+        gateway: Optional[str] = None
+        interface: Optional[str] = None
+
+        # Check each line
+        for line in lines:
+            # Try the interface regex
+            interface_match = RE_ROUTE_ADDITIONAL_SUMMARY_INTERFACE.match(line)
+            if interface_match:
+                # Store the interface if not null
+                interface = interface_match.group("interface") or interface
+                continue
+
+            # Try the IP regex
+            ip_match = RE_ROUTE_ADDITIONAL_SUMMARY_IP.match(line)
+            if ip_match:
+                # Store the IP & interface if not null
+                gateway = ip_match.group("gateway") or gateway
+                interface = ip_match.group("interface") or interface
+                continue
+        
+        # Return the results
+        return (gateway, interface)
 
     def _parse_route_detail(self, lines):
         """Parse a blob like:
